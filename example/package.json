@@ -1,0 +1,28 @@
+{
+  "name": "phantom-ows-payments-example",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@phantom/react-native-sdk": "^1.0.7",
+    "@react-native-async-storage/async-storage": "^1.23.1",
+    "@solana/web3.js": "^1.95.5",
+    "expo": "~52.0.0",
+    "expo-local-authentication": "~14.0.1",
+    "expo-router": "~4.0.0",
+    "expo-secure-store": "~13.0.2",
+    "phantom-ows-payments": "*",
+    "react": "18.3.1",
+    "react-native": "0.76.3",
+    "react-native-get-random-values": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
