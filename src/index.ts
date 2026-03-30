@@ -1,5 +1,5 @@
-// Polyfill — must be imported first for crypto.getRandomValues in React Native
-import 'react-native-get-random-values';
+// NOTE: Add `import 'react-native-get-random-values'` as the very first line
+// in your app's entry file (e.g. index.ts). The library does not bundle it.
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export { PhantomOwsProvider, usePhantomOws } from './PhantomOwsProvider';
