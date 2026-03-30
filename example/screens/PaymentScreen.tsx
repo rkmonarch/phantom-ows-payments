@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,21 +7,21 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { useSolana } from '@phantom/react-native-sdk';
+} from "react-native";
+import { useSolana } from "@phantom/react-native-sdk";
 import {
   usePayWithPhantomOws,
   usePhantomOwsWallet,
   PaymentApprovalSheet,
   type X402PaymentAccept,
   type X402PaymentRequired,
-} from 'phantom-ows-payments';
+} from "phantom-ows-payments";
 
 // ─── Demo: direct SOL transfer (no x402 server needed) ───────────────────────
 // This tests Phantom signing end-to-end. For a real x402 flow you'd call
 // payAndFetch('https://your-api.com/paid-endpoint') instead.
 
-const DEMO_RECIPIENT = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+const DEMO_RECIPIENT = "3YKGasCtfeMHNR5CrFB4Y5sL6b5ukvzSoTpcUGpFJs36";
 const DEMO_LAMPORTS = 1000; // 0.000001 SOL
 
 // Demo x402 challenge — requires a live facilitator server to actually sign.
@@ -29,19 +29,19 @@ const DEMO_LAMPORTS = 1000; // 0.000001 SOL
 const DEMO_X402_CHALLENGE: X402PaymentRequired = {
   x402Version: 2,
   resource: {
-    url: 'https://api.example.com/premium-data',
-    description: 'Premium market data feed',
-    mimeType: 'application/json',
+    url: "https://api.example.com/premium-data",
+    description: "Premium market data feed",
+    mimeType: "application/json",
   },
   accepts: [
     {
-      scheme: 'exact',
-      network: 'solana:devnet',
-      amount: '100000', // 0.10 USDC
-      asset: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr',
+      scheme: "exact",
+      network: "solana:devnet",
+      amount: "100000", // 0.10 USDC
+      asset: "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr",
       payTo: DEMO_RECIPIENT,
       maxTimeoutSeconds: 60,
-      memo: 'Premium data access',
+      memo: "Premium data access",
     },
   ],
 };
@@ -54,15 +54,17 @@ export function PaymentScreen() {
   const [isSending, setIsSending] = useState(false);
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [customUrl, setCustomUrl] = useState('');
+  const [customUrl, setCustomUrl] = useState("");
 
   // Approval sheet state
-  const [pendingAccept, setPendingAccept] = useState<X402PaymentAccept | null>(null);
+  const [pendingAccept, setPendingAccept] = useState<X402PaymentAccept | null>(
+    null,
+  );
 
   // ── Demo: direct SOL transfer via Phantom signAndSendTransaction ─────────────
   const handleDirectTransfer = async () => {
     if (!solana.isConnected) {
-      Alert.alert('Error', 'Wallet not connected');
+      Alert.alert("Error", "Wallet not connected");
       return;
     }
     setIsSending(true);
@@ -70,10 +72,15 @@ export function PaymentScreen() {
     setLastTx(null);
     try {
       // Dynamic import keeps @solana/web3.js as a peer dep
-      const { Transaction, SystemProgram, PublicKey, Connection, clusterApiUrl } =
-        await import('@solana/web3.js');
+      const {
+        Transaction,
+        SystemProgram,
+        PublicKey,
+        Connection,
+        clusterApiUrl,
+      } = await import("@solana/web3.js");
 
-      const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+      const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
       const fromPubkey = new PublicKey(solanaAddress!);
       const toPubkey = new PublicKey(DEMO_RECIPIENT);
 
@@ -95,15 +102,15 @@ export function PaymentScreen() {
 
       await connection.confirmTransaction(
         { signature, blockhash, lastValidBlockHeight },
-        'confirmed',
+        "confirmed",
       );
 
       setLastTx(signature);
-      Alert.alert('Transfer Sent!', `Signature:\n${signature.slice(0, 20)}...`);
+      Alert.alert("Transfer Sent!", `Signature:\n${signature.slice(0, 20)}...`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setLastError(msg);
-      Alert.alert('Error', msg);
+      Alert.alert("Error", msg);
     } finally {
       setIsSending(false);
     }
@@ -117,15 +124,17 @@ export function PaymentScreen() {
   const handleApprove = () => {
     setPendingAccept(null);
     Alert.alert(
-      'x402 Flow',
-      'In production this would sign & submit the server-provided transaction.\n\nWire up payAndFetch() to a real x402 endpoint to complete the flow.',
+      "x402 Flow",
+      "In production this would sign & submit the server-provided transaction.\n\nWire up payAndFetch() to a real x402 endpoint to complete the flow.",
     );
   };
 
   if (!isConnected) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>Connect your wallet first (Wallet tab)</Text>
+        <Text style={styles.emptyText}>
+          Connect your wallet first (Wallet tab)
+        </Text>
       </View>
     );
   }
@@ -141,11 +150,14 @@ export function PaymentScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Direct SOL Transfer</Text>
         <Text style={styles.hint}>
-          Sends 0.000001 SOL on devnet to the demo address.{'\n'}
-          Requires your wallet to be funded — use{' '}
+          Sends 0.000001 SOL on devnet to the demo address.{"\n"}
+          Requires your wallet to be funded — use{" "}
           <Text style={styles.mono}>solfaucet.com</Text> if needed.
         </Text>
-        <InfoRow label="To" value={`${DEMO_RECIPIENT.slice(0, 8)}...${DEMO_RECIPIENT.slice(-6)}`} />
+        <InfoRow
+          label="To"
+          value={`${DEMO_RECIPIENT.slice(0, 8)}...${DEMO_RECIPIENT.slice(-6)}`}
+        />
         <InfoRow label="Amount" value="0.000001 SOL (devnet)" />
 
         <TouchableOpacity
@@ -172,7 +184,7 @@ export function PaymentScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>x402 Approval Sheet</Text>
         <Text style={styles.hint}>
-          Preview the payment approval UI. Wire up{' '}
+          Preview the payment approval UI. Wire up{" "}
           <Text style={styles.mono}>payAndFetch()</Text> to a live x402 endpoint
           for the full autonomous payment flow.
         </Text>
@@ -209,7 +221,10 @@ export function PaymentScreen() {
         <TouchableOpacity
           style={[styles.payButton, styles.secondaryButton]}
           onPress={() =>
-            Alert.alert('payAndFetch', `Would call:\npayAndFetch("${customUrl}")`)
+            Alert.alert(
+              "payAndFetch",
+              `Would call:\npayAndFetch("${customUrl}")`,
+            )
           }
           disabled={!customUrl}
         >
@@ -222,7 +237,7 @@ export function PaymentScreen() {
         visible={pendingAccept !== null}
         accept={pendingAccept}
         resourceUrl={DEMO_X402_CHALLENGE.resource?.url}
-        amountUsd={0.10}
+        amountUsd={0.1}
         onApprove={handleApprove}
         onReject={() => setPendingAccept(null)}
       />
@@ -241,46 +256,51 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { gap: 20 },
-  title: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
-  subtitle: { color: '#888', fontSize: 14, lineHeight: 20 },
+  title: { color: "#FFFFFF", fontSize: 22, fontWeight: "700" },
+  subtitle: { color: "#888", fontSize: 14, lineHeight: 20 },
   card: {
-    backgroundColor: '#1A1A2E',
+    backgroundColor: "#1A1A2E",
     borderRadius: 16,
     padding: 16,
     gap: 12,
   },
-  cardTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  hint: { color: '#666', fontSize: 13, lineHeight: 18 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  infoLabel: { color: '#888', fontSize: 14 },
-  infoValue: { color: '#FFFFFF', fontSize: 14, fontWeight: '500' },
+  cardTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
+  hint: { color: "#666", fontSize: 13, lineHeight: 18 },
+  infoRow: { flexDirection: "row", justifyContent: "space-between" },
+  infoLabel: { color: "#888", fontSize: 14 },
+  infoValue: { color: "#FFFFFF", fontSize: 14, fontWeight: "500" },
   payButton: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: "#7C3AED",
     borderRadius: 12,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  secondaryButton: { backgroundColor: '#2A2A3E' },
-  payButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  secondaryButton: { backgroundColor: "#2A2A3E" },
+  payButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   input: {
-    backgroundColor: '#0D0D1A',
+    backgroundColor: "#0D0D1A",
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#2A2A3E',
+    borderColor: "#2A2A3E",
   },
-  txHash: { color: '#22C55E', fontFamily: 'monospace', fontSize: 12 },
+  txHash: { color: "#22C55E", fontFamily: "monospace", fontSize: 12 },
   errorText: {
-    color: '#EF4444',
+    color: "#EF4444",
     fontSize: 13,
-    backgroundColor: '#EF444411',
+    backgroundColor: "#EF444411",
     padding: 10,
     borderRadius: 8,
   },
-  mono: { fontFamily: 'monospace' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  emptyText: { color: '#555', fontSize: 15, textAlign: 'center' },
+  mono: { fontFamily: "monospace" },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  emptyText: { color: "#555", fontSize: 15, textAlign: "center" },
 });

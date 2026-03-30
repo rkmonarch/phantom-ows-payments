@@ -10,6 +10,7 @@ import {
 import {
   checkPolicy,
   signSvmPayment,
+  buildAndSignSvmTransfer,
   signEvmPayment,
   parseSettlementResponse,
   computeTodaySpend,
@@ -18,6 +19,8 @@ import {
 } from '../utils/owsCompliance';
 import type {
   X402PaymentRequired,
+  X402PaymentAccept,
+  X402PaymentPayload,
   PaymentOptions,
   PaymentResult,
   PaymentRecord,
@@ -58,6 +61,59 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
   const [isPaying, setIsPaying] = useState(false);
   const [lastError, setLastError] = useState<Error | null>(null);
 
+  /**
+   * Sign an x402 accept option using the appropriate Phantom method.
+   * Branches on whether the server provided a partial transaction (extra.transaction)
+   * or expects a client-built SOL transfer.
+   */
+  const signAccept = useCallback(
+    async (accept: X402PaymentAccept, resourceUrl: string): Promise<X402PaymentPayload> => {
+      if (isSvmNetwork(accept.network)) {
+        // Switch Phantom to the correct network before any signing.
+        // The embedded wallet defaults to mainnet — without this, transactions
+        // sent against devnet RPC fail with "no record of a prior credit".
+        const phantomNetwork = accept.network.includes('devnet') ? 'devnet' : 'mainnet';
+        console.log('[ows] switching Phantom network to', phantomNetwork);
+        await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork(phantomNetwork);
+
+        const hasPartialTx = !!(accept.extra as Record<string, unknown> | undefined)?.['transaction'];
+        if (hasPartialTx) {
+          // Server provided a partially-signed tx — add our signature
+          return signSvmPayment(
+            accept,
+            (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
+            resourceUrl,
+          );
+        } else {
+          // Client builds a native SOL transfer.
+          // Sign via Phantom HSM, then broadcast via our own devnet RPC so we
+          // control which cluster the tx lands on (Phantom's signAndSendTransaction
+          // uses its own RPC which may default to mainnet).
+          if (!wallet.solanaAddress) {
+            throw new Error('Solana address not available — wallet not connected');
+          }
+          const rpcUrl = config.solanaRpcUrl ?? 'https://api.devnet.solana.com';
+          const signAndSendViaDevnet = async (tx: unknown): Promise<{ signature: string }> => {
+            console.log('[ows] signAndSendTransaction on', phantomNetwork);
+            return solana.signAndSendTransaction(
+              tx as Parameters<typeof solana.signAndSendTransaction>[0],
+            );
+          };
+          return buildAndSignSvmTransfer(
+            accept,
+            wallet.solanaAddress,
+            signAndSendViaDevnet,
+            rpcUrl,
+            resourceUrl,
+          );
+        }
+      } else {
+        return signEvmPayment(accept, resourceUrl);
+      }
+    },
+    [wallet.solanaAddress, config.solanaRpcUrl, solana],
+  );
+
   const payChallenge = useCallback(
     async (
       challenge: X402PaymentRequired,
@@ -72,7 +128,7 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
       const accept = selectPaymentOption(challenge, opts.preferredNetwork);
 
       // 2. Policy check
-      const todaySpend = computeTodaySpend([]); // pass real history via closure if needed
+      const todaySpend = computeTodaySpend([]);
       const policyResult = checkPolicy(policy, accept, {
         amountUsd: opts.amountUsd,
         todaySpend,
@@ -106,20 +162,11 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
       addRecord(pendingRecord);
 
       // 5. Sign
-      let payload;
+      let payload: X402PaymentPayload;
       try {
-        if (isSvmNetwork(accept.network)) {
-          payload = await signSvmPayment(
-            accept,
-            (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
-            resourceUrl,
-          );
-        } else {
-          payload = await signEvmPayment(accept, resourceUrl);
-        }
+        payload = await signAccept(accept, resourceUrl);
       } catch (err) {
-        const failedRecord: PaymentRecord = { ...pendingRecord, status: 'failed' };
-        addRecord(failedRecord);
+        addRecord({ ...pendingRecord, status: 'failed' });
         throw err;
       }
 
@@ -149,7 +196,7 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
         record: successRecord,
       };
     },
-    [wallet, policy, addRecord, config, solana],
+    [wallet, policy, addRecord, config, signAccept],
   );
 
   const payAndFetch = useCallback(
@@ -181,19 +228,71 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
           return { response, payment: { success: true, network: '', record } };
         }
 
-        // 402 received — pay and retry
-        const payment = await payChallenge(challenge, url, payOpts);
+        // 402 received — select option, check policy, sign, and retry
+        const accept = selectPaymentOption(challenge, payOpts.preferredNetwork);
 
-        // Re-fetch the resource after payment
-        const { response: paidResponse } = await fetchWithX402(url, {
-          ...fetchInit,
-          headers: {
-            ...(fetchInit?.headers ?? {}),
-            'PAYMENT-SIGNATURE': encodePaymentSignature(payment),
-          },
+        const todaySpend = computeTodaySpend([]);
+        const policyResult = checkPolicy(policy, accept, {
+          amountUsd: payOpts.amountUsd,
+          todaySpend,
         });
+        if (!policyResult.allowed) {
+          throw new Error(`Payment blocked by policy: ${policyResult.reason}`);
+        }
 
-        return { response: paidResponse, payment };
+        if (policyResult.requiresApproval && !payOpts.skipApproval) {
+          const approved = await requestBiometricApproval();
+          if (!approved) throw new Error('Payment rejected by user');
+        }
+
+        const pendingRecord: PaymentRecord = {
+          id: generateId(),
+          timestamp: Date.now(),
+          amount: accept.amount,
+          amountUsd: payOpts.amountUsd,
+          asset: accept.asset,
+          destination: accept.payTo,
+          network: accept.network,
+          status: 'pending',
+          memo: accept.memo,
+          resourceUrl: url,
+        };
+        addRecord(pendingRecord);
+
+        let payload: X402PaymentPayload;
+        try {
+          payload = await signAccept(accept, url);
+        } catch (err) {
+          addRecord({ ...pendingRecord, status: 'failed' });
+          throw err;
+        }
+
+        // Retry the original request with the payment signature header
+        const signatureHeader = encodePaymentSignature(payload);
+        const paidResponse = await retryWithPayment(url, signatureHeader);
+        const settlement = parseSettlementResponse(paidResponse.headers);
+
+        const finalStatus: PaymentRecord['status'] = settlement.success ? 'success' : 'failed';
+        const successRecord: PaymentRecord = {
+          ...pendingRecord,
+          status: finalStatus,
+          txHash: settlement.txHash,
+        };
+        addRecord(successRecord);
+
+        if (config.vaultUrl && wallet.solanaAddress) {
+          logToVault(config.vaultUrl, successRecord, wallet.solanaAddress);
+        }
+
+        return {
+          response: paidResponse,
+          payment: {
+            success: settlement.success,
+            txHash: settlement.txHash,
+            network: accept.network,
+            record: successRecord,
+          },
+        };
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         setLastError(error);
@@ -202,7 +301,7 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
         setIsPaying(false);
       }
     },
-    [payChallenge],
+    [wallet, policy, addRecord, config, signAccept],
   );
 
   return { payAndFetch, payChallenge, isPaying, lastError };

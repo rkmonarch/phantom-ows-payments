@@ -31,6 +31,7 @@ export {
   isSvmNetwork,
   isEvmNetwork,
   logToVault,
+  buildAndSignSvmTransfer,
 } from './utils/owsCompliance';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

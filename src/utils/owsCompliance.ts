@@ -159,6 +159,75 @@ export async function signSvmPayment(
 }
 
 /**
+ * Build, sign, and send a native SOL transfer for x402 payments where the
+ * server does NOT provide a partial transaction (asset === 'SOL').
+ *
+ * The client constructs a SystemProgram.transfer tx, broadcasts it via
+ * Phantom's signAndSendTransaction, waits for confirmation, and returns a
+ * payload whose `payload` field is the on-chain transaction signature.
+ * The server verifies this signature on-chain to confirm payment.
+ *
+ * Requires @solana/web3.js to be installed.
+ */
+export async function buildAndSignSvmTransfer(
+  accept: X402PaymentAccept,
+  fromAddress: string,
+  signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }>,
+  solanaRpcUrl: string,
+  resourceUrl: string,
+): Promise<X402PaymentPayload> {
+  let web3: typeof import('@solana/web3.js');
+  try {
+    web3 = await import('@solana/web3.js');
+  } catch {
+    throw new Error(
+      '@solana/web3.js is required for Solana payments. Install it: npm i @solana/web3.js',
+    );
+  }
+
+  const { Transaction, SystemProgram, PublicKey, Connection } = web3;
+
+  const connection = new Connection(solanaRpcUrl, 'confirmed');
+  const fromPubkey = new PublicKey(fromAddress);
+  const toPubkey = new PublicKey(accept.payTo);
+  const lamports = parseInt(accept.amount, 10);
+
+  if (isNaN(lamports) || lamports <= 0) {
+    throw new Error(`Invalid payment amount: ${accept.amount}`);
+  }
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+  const tx = new Transaction({
+    recentBlockhash: blockhash,
+    feePayer: fromPubkey,
+  }).add(
+    SystemProgram.transfer({ fromPubkey, toPubkey, lamports }),
+  );
+
+  const { signature } = await signAndSendTransaction(tx);
+
+  // Wait for on-chain confirmation before returning — the server will query it
+  await connection.confirmTransaction(
+    { signature, blockhash, lastValidBlockHeight },
+    'confirmed',
+  );
+
+  return {
+    x402Version: 2,
+    scheme: accept.scheme,
+    network: accept.network,
+    payload: signature,   // on-chain tx signature — server verifies this
+    resource: {
+      url: resourceUrl,
+      amount: accept.amount,
+      asset: accept.asset,
+      payTo: accept.payTo,
+    },
+  };
+}
+
+/**
  * Parse and validate the PAYMENT-RESPONSE header from the server.
  */
 export function parseSettlementResponse(headers: Headers): X402SettlementResponse {

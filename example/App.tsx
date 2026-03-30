@@ -21,6 +21,7 @@ import {
 
 import { WalletScreen } from './screens/WalletScreen';
 import { PaymentScreen } from './screens/PaymentScreen';
+import { BlogScreen } from './screens/BlogScreen';
 
 // ─── Phantom App Config ───────────────────────────────────────────────────────
 // Get your App ID from https://phantom.app/portal
@@ -53,7 +54,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const [tab, setTab] = useState<'wallet' | 'pay' | 'history'>('wallet');
+  const [tab, setTab] = useState<'wallet' | 'pay' | 'blog' | 'history'>('wallet');
 
   return (
     <View style={styles.container}>
@@ -64,13 +65,13 @@ function AppContent() {
 
       {/* Tab Nav */}
       <View style={styles.tabs}>
-        {(['wallet', 'pay', 'history'] as const).map((t) => (
+        {(['wallet', 'pay', 'blog', 'history'] as const).map((t) => (
           <Text
             key={t}
             style={[styles.tab, tab === t && styles.activeTab]}
             onPress={() => setTab(t)}
           >
-            {t === 'wallet' ? 'Wallet' : t === 'pay' ? 'Pay' : 'History'}
+            {t === 'wallet' ? 'Wallet' : t === 'pay' ? 'Pay' : t === 'blog' ? 'Blog' : 'History'}
           </Text>
         ))}
       </View>
@@ -79,10 +80,11 @@ function AppContent() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {tab === 'wallet' && <WalletScreen />}
         {tab === 'pay' && <PaymentScreen />}
+        {tab === 'blog' && <BlogScreen />}
         {tab === 'history' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Transaction History</Text>
-            <TransactionHistory emptyMessage="No transactions yet — try the Pay tab!" />
+            <TransactionHistory emptyMessage="No transactions yet — try the Pay or Blog tab!" />
           </View>
         )}
       </ScrollView>
