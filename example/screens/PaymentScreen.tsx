@@ -80,9 +80,33 @@ export function PaymentScreen() {
         clusterApiUrl,
       } = await import("@solana/web3.js");
 
+      const switchNetwork = (solana as unknown as {
+        switchNetwork?: (network: string) => Promise<void>;
+      }).switchNetwork;
+      if (typeof switchNetwork === "function") {
+        await switchNetwork("devnet");
+      }
+
       const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-      const fromPubkey = new PublicKey(solanaAddress!);
+      const signerAddress = (solana as typeof solana & { publicKey?: string | null }).publicKey ?? solanaAddress;
+      if (!signerAddress) {
+        throw new Error("Solana signer address not available");
+      }
+      if (solanaAddress && solanaAddress !== signerAddress) {
+        console.warn("[pay] signer/account mismatch", {
+          walletAddress: solanaAddress,
+          signerAddress,
+        });
+      }
+      const fromPubkey = new PublicKey(signerAddress);
       const toPubkey = new PublicKey(DEMO_RECIPIENT);
+
+      const fromAccount = await connection.getAccountInfo(fromPubkey, "confirmed");
+      if (!fromAccount) {
+        throw new Error(
+          `Wallet ${signerAddress} does not exist on devnet yet. Fund this exact address first.`,
+        );
+      }
 
       const { blockhash, lastValidBlockHeight } =
         await connection.getLatestBlockhash();
@@ -97,6 +121,15 @@ export function PaymentScreen() {
           lamports: DEMO_LAMPORTS,
         }),
       );
+
+      const balance = await connection.getBalance(fromPubkey, "confirmed");
+      const fee = (await connection.getFeeForMessage(tx.compileMessage(), "confirmed")).value ?? 5000;
+      const requiredLamports = DEMO_LAMPORTS + fee;
+      if (balance < requiredLamports) {
+        throw new Error(
+          `Insufficient devnet SOL. Wallet has ${(balance / 1e9).toFixed(6)} SOL and needs at least ${(requiredLamports / 1e9).toFixed(6)} SOL including fees.`,
+        );
+      }
 
       const { signature } = await solana.signAndSendTransaction(tx);
 

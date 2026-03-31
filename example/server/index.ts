@@ -18,7 +18,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const PORT = process.env.PORT ?? 3000;
+const PORT = process.env.PORT ?? 3001;
 // Your devnet treasury wallet — set via env or replace this default
 const TREASURY_WALLET = process.env.TREASURY_WALLET ?? '3YKGasCtfeMHNR5CrFB4Y5sL6b5ukvzSoTpcUGpFJs36';
 const ARTICLE_PRICE_LAMPORTS = 5_000_000; // 0.005 SOL

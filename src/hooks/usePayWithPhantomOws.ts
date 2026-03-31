@@ -11,6 +11,8 @@ import {
   checkPolicy,
   signSvmPayment,
   buildAndSignSvmTransfer,
+  buildAndSignSvmTransferLocal,
+  getOrCreateDevnetKeypair,
   signEvmPayment,
   parseSettlementResponse,
   computeTodaySpend,
@@ -69,44 +71,93 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
   const signAccept = useCallback(
     async (accept: X402PaymentAccept, resourceUrl: string): Promise<X402PaymentPayload> => {
       if (isSvmNetwork(accept.network)) {
-        // Switch Phantom to the correct network before any signing.
-        // The embedded wallet defaults to mainnet — without this, transactions
-        // sent against devnet RPC fail with "no record of a prior credit".
-        const phantomNetwork = accept.network.includes('devnet') ? 'devnet' : 'mainnet';
-        console.log('[ows] switching Phantom network to', phantomNetwork);
-        await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork(phantomNetwork);
+        const isDevnet = accept.network.includes('devnet');
+        const rpcUrl = config.solanaRpcUrl ?? 'https://api.devnet.solana.com';
 
-        const hasPartialTx = !!(accept.extra as Record<string, unknown> | undefined)?.['transaction'];
-        if (hasPartialTx) {
-          // Server provided a partially-signed tx — add our signature
-          return signSvmPayment(
-            accept,
-            (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
-            resourceUrl,
+        if (isDevnet) {
+          // Phantom's cloud KMS has a "Solana USD spend extension" that simulates
+          // every transaction before signing. On devnet it always fails because devnet
+          // SOL has no USD price feed. We bypass the KMS entirely by signing locally
+          // with a persisted keypair and broadcasting directly to the devnet RPC.
+          const keypair = await getOrCreateDevnetKeypair();
+          console.log('[ows] devnet local signer:', keypair.publicKey.toBase58());
+          return buildAndSignSvmTransferLocal(accept, keypair, rpcUrl, resourceUrl);
+        }
+
+        // ── Mainnet: use Phantom's MPC KMS ────────────────────────────────────
+        console.log('[ows] switchNetwork → mainnet');
+        await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork('mainnet');
+
+        // Bypass the /prepare simulation endpoint (backend sometimes rejects devnet-style tx)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const phantomClient = (solana as any)?.provider?.client;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const axiosInstance = phantomClient?.axiosInstance;
+        let axiosRequestInterceptorId: number | undefined;
+        let axiosResponseInterceptorId: number | undefined;
+
+        if (axiosInstance) {
+          axiosRequestInterceptorId = axiosInstance.interceptors.request.use(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (reqConfig: any) => {
+              if (typeof reqConfig.url === 'string' && reqConfig.url.endsWith('/prepare')) {
+                reqConfig.adapter = () => {
+                  const txData = typeof reqConfig.data === 'string'
+                    ? JSON.parse(reqConfig.data)
+                    : reqConfig.data;
+                  return Promise.resolve({
+                    data: { transaction: txData?.transaction ?? '' },
+                    status: 200, statusText: 'OK', headers: {}, config: reqConfig,
+                  });
+                };
+              }
+              return reqConfig;
+            },
           );
-        } else {
-          // Client builds a native SOL transfer.
-          // Sign via Phantom HSM, then broadcast via our own devnet RPC so we
-          // control which cluster the tx lands on (Phantom's signAndSendTransaction
-          // uses its own RPC which may default to mainnet).
-          if (!wallet.solanaAddress) {
-            throw new Error('Solana address not available — wallet not connected');
-          }
-          const rpcUrl = config.solanaRpcUrl ?? 'https://api.devnet.solana.com';
-          const signAndSendViaDevnet = async (tx: unknown): Promise<{ signature: string }> => {
-            console.log('[ows] signAndSendTransaction on', phantomNetwork);
-            return solana.signAndSendTransaction(
-              tx as Parameters<typeof solana.signAndSendTransaction>[0],
-            );
-          };
-          return buildAndSignSvmTransfer(
-            accept,
-            wallet.solanaAddress,
-            signAndSendViaDevnet,
-            rpcUrl,
-            resourceUrl,
+          axiosResponseInterceptorId = axiosInstance.interceptors.response.use(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (response: any) => response,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (error: any) => {
+              const url = error.config?.url ?? 'unknown';
+              const status = error.response?.status;
+              const body = JSON.stringify(error.response?.data);
+              console.error(`[ows] Phantom API error: ${url} → HTTP ${status}: ${body}`);
+              return Promise.reject(error);
+            },
           );
         }
+
+        const signerAddress = (solana as typeof solana & { publicKey?: string | null }).publicKey ?? wallet.solanaAddress;
+        if (!signerAddress) throw new Error('Solana signer address not available — wallet not connected');
+
+        const hasPartialTx = !!(accept.extra as Record<string, unknown> | undefined)?.['transaction'];
+        let result: X402PaymentPayload;
+        try {
+          if (hasPartialTx) {
+            result = await signSvmPayment(
+              accept,
+              (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
+              resourceUrl,
+            );
+          } else {
+            const signAndSend = async (tx: unknown): Promise<{ signature: string }> => {
+              const { signature } = await solana.signAndSendTransaction(
+                tx as Parameters<typeof solana.signAndSendTransaction>[0],
+              );
+              return { signature };
+            };
+            result = await buildAndSignSvmTransfer(accept, signerAddress, signAndSend, rpcUrl, resourceUrl);
+          }
+        } finally {
+          if (axiosInstance && axiosRequestInterceptorId !== undefined) {
+            axiosInstance.interceptors.request.eject(axiosRequestInterceptorId);
+          }
+          if (axiosInstance && axiosResponseInterceptorId !== undefined) {
+            axiosInstance.interceptors.response.eject(axiosResponseInterceptorId);
+          }
+        }
+        return result;
       } else {
         return signEvmPayment(accept, resourceUrl);
       }

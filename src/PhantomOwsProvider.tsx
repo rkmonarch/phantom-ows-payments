@@ -11,6 +11,7 @@ import {
   useConnect,
   useDisconnect,
   useAccounts,
+  useSolana,
   type WalletAddress,
 } from '@phantom/react-native-sdk';
 import { AddressType } from '@phantom/client';
@@ -51,6 +52,7 @@ function PhantomOwsInner({
   const { connect: phantomConnect } = useConnect();
   const { disconnect: phantomDisconnect } = useDisconnect();
   const accountsResult = useAccounts();
+  const { solana } = useSolana();
 
   const [wallet, setWallet] = useState<PhantomOwsWalletState>({
     isConnected: false,
@@ -64,6 +66,20 @@ function PhantomOwsInner({
   });
 
   const [history, setHistory] = useState<PaymentRecord[]>([]);
+
+  const switchConfiguredNetwork = useCallback(async () => {
+    if (!config.cluster || !(accountsResult.isConnected ?? false)) return;
+
+    const targetNetwork = config.cluster === 'mainnet-beta' ? 'mainnet' : config.cluster;
+    const switchNetwork = (solana as unknown as { switchNetwork?: (network: string) => Promise<void> }).switchNetwork;
+    if (typeof switchNetwork !== 'function') return;
+
+    try {
+      await switchNetwork(targetNetwork);
+    } catch (error) {
+      console.warn('[ows] failed to switch Phantom network:', error);
+    }
+  }, [accountsResult.isConnected, config.cluster, solana]);
 
   // Sync Phantom accounts into our wallet state
   useEffect(() => {
@@ -94,16 +110,21 @@ function PhantomOwsInner({
     });
   }, [accountsResult.addresses, accountsResult.isConnected]);
 
+  useEffect(() => {
+    switchConfiguredNetwork();
+  }, [switchConfiguredNetwork]);
+
   const connect = useCallback(
     async (provider: 'google' | 'apple') => {
       setWallet((prev) => ({ ...prev, isLoading: true }));
       try {
         await phantomConnect({ provider });
+        await switchConfiguredNetwork();
       } finally {
         setWallet((prev) => ({ ...prev, isLoading: false }));
       }
     },
-    [phantomConnect],
+    [phantomConnect, switchConfiguredNetwork],
   );
 
   const disconnect = useCallback(() => {

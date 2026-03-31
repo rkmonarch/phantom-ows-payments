@@ -205,6 +205,22 @@ export async function buildAndSignSvmTransfer(
     SystemProgram.transfer({ fromPubkey, toPubkey, lamports }),
   );
 
+  const fromAccount = await connection.getAccountInfo(fromPubkey, 'confirmed');
+  if (!fromAccount) {
+    throw new Error(
+      `Connected wallet ${fromAddress} does not exist on ${accept.network} yet. Fund this address on the selected Solana cluster first.`,
+    );
+  }
+
+  const balance = await connection.getBalance(fromPubkey, 'confirmed');
+  const fee = (await connection.getFeeForMessage(tx.compileMessage(), 'confirmed')).value ?? 5000;
+  const requiredLamports = lamports + fee;
+  if (balance < requiredLamports) {
+    throw new Error(
+      `Insufficient balance on ${accept.network}: have ${(balance / 1e9).toFixed(6)} SOL, need at least ${(requiredLamports / 1e9).toFixed(6)} SOL including fees.`,
+    );
+  }
+
   const { signature } = await signAndSendTransaction(tx);
 
   // Wait for on-chain confirmation before returning — the server will query it
@@ -218,6 +234,128 @@ export async function buildAndSignSvmTransfer(
     scheme: accept.scheme,
     network: accept.network,
     payload: signature,   // on-chain tx signature — server verifies this
+    resource: {
+      url: resourceUrl,
+      amount: accept.amount,
+      asset: accept.asset,
+      payTo: accept.payTo,
+    },
+  };
+}
+
+const DEVNET_KEYPAIR_STORAGE_KEY = 'phantom_ows_devnet_keypair';
+
+/**
+ * Load (or generate and persist) a local Solana keypair used for devnet payments.
+ * Phantom's cloud KMS cannot sign devnet transactions (its spending-extension simulation
+ * fails because devnet SOL has no USD price feed). We bypass it entirely for devnet by
+ * signing locally and broadcasting directly via the devnet RPC.
+ *
+ * Key is persisted via expo-secure-store (encrypted on-device storage).
+ * The returned keypair's publicKey.toBase58() is the address to fund on devnet.
+ */
+export async function getOrCreateDevnetKeypair(): Promise<import('@solana/web3.js').Keypair> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let SecureStore: any;
+  try {
+    SecureStore = await import('expo-secure-store');
+  } catch {
+    throw new Error(
+      'expo-secure-store is required for devnet keypair storage. Add it to your Expo project.',
+    );
+  }
+
+  let web3: typeof import('@solana/web3.js');
+  try {
+    web3 = await import('@solana/web3.js');
+  } catch {
+    throw new Error('@solana/web3.js is required for Solana payments.');
+  }
+
+  const stored: string | null = await SecureStore.getItemAsync(DEVNET_KEYPAIR_STORAGE_KEY);
+  if (stored) {
+    try {
+      const secretKeyArray = JSON.parse(stored) as number[];
+      return web3.Keypair.fromSecretKey(Uint8Array.from(secretKeyArray));
+    } catch {
+      // corrupted — regenerate below
+    }
+  }
+
+  const keypair = web3.Keypair.generate();
+  await SecureStore.setItemAsync(
+    DEVNET_KEYPAIR_STORAGE_KEY,
+    JSON.stringify(Array.from(keypair.secretKey)),
+  );
+  console.log('[ows] Generated new devnet keypair:', keypair.publicKey.toBase58());
+  return keypair;
+}
+
+/**
+ * Build, sign (with a local Keypair), and send a native SOL transfer on devnet.
+ * Used instead of Phantom's KMS for devnet because the KMS spending-extension
+ * cannot simulate devnet transactions (no SOL/USD price feed on devnet).
+ */
+export async function buildAndSignSvmTransferLocal(
+  accept: X402PaymentAccept,
+  keypair: import('@solana/web3.js').Keypair,
+  solanaRpcUrl: string,
+  resourceUrl: string,
+): Promise<X402PaymentPayload> {
+  let web3: typeof import('@solana/web3.js');
+  try {
+    web3 = await import('@solana/web3.js');
+  } catch {
+    throw new Error('@solana/web3.js is required for Solana payments.');
+  }
+
+  const { Transaction, SystemProgram, Connection } = web3;
+  const connection = new Connection(solanaRpcUrl, 'confirmed');
+  const fromPubkey = keypair.publicKey;
+  const toPubkey = new web3.PublicKey(accept.payTo);
+  const lamports = parseInt(accept.amount, 10);
+
+  if (isNaN(lamports) || lamports <= 0) {
+    throw new Error(`Invalid payment amount: ${accept.amount}`);
+  }
+
+  const fromAccount = await connection.getAccountInfo(fromPubkey, 'confirmed');
+  if (!fromAccount) {
+    throw new Error(
+      `Devnet payment keypair ${fromPubkey.toBase58()} has no balance. ` +
+      `Fund this address at https://faucet.solana.com before paying.`,
+    );
+  }
+
+  const balance = await connection.getBalance(fromPubkey, 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+  const tx = new Transaction({
+    recentBlockhash: blockhash,
+    feePayer: fromPubkey,
+  }).add(SystemProgram.transfer({ fromPubkey, toPubkey, lamports }));
+
+  const fee = (await connection.getFeeForMessage(tx.compileMessage(), 'confirmed')).value ?? 5000;
+  const requiredLamports = lamports + fee;
+  if (balance < requiredLamports) {
+    throw new Error(
+      `Insufficient devnet balance on ${fromPubkey.toBase58()}: ` +
+      `have ${(balance / 1e9).toFixed(6)} SOL, need ${(requiredLamports / 1e9).toFixed(6)} SOL.`,
+    );
+  }
+
+  tx.sign(keypair);
+  const rawTx = tx.serialize();
+  const signature = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+
+  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+  console.log('[ows] devnet local tx confirmed:', signature.slice(0, 12) + '...');
+
+  return {
+    x402Version: 2,
+    scheme: accept.scheme,
+    network: accept.network,
+    payload: signature,
     resource: {
       url: resourceUrl,
       amount: accept.amount,
