@@ -7,10 +7,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { usePolicy, TransactionHistory } from 'phantom-ows-payments';
+import { usePolicy, TransactionHistory, usePhantomOwsWallet } from 'phantom-ows-payments';
 
 export function SettingsScreen() {
   const { policy, todaySpendUsd, remainingDailyUsd, pause, resume } = usePolicy();
+  const { isConnected, disconnect } = usePhantomOwsWallet();
   const [activeSection, setActiveSection] = useState<'policy' | 'history' | null>(null);
 
   return (
@@ -104,6 +105,21 @@ export function SettingsScreen() {
           />
         </View>
       </View>
+
+      {/* Logout */}
+      {isConnected && (
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() =>
+            Alert.alert('Disconnect wallet?', 'You will need to reconnect to make payments.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Disconnect', style: 'destructive', onPress: disconnect },
+            ])
+          }
+        >
+          <Text style={styles.logoutText}>Disconnect Wallet</Text>
+        </TouchableOpacity>
+      )}
 
       {/* App info */}
       <View style={styles.infoCard}>
@@ -281,6 +297,19 @@ const styles = StyleSheet.create({
     elevation: 2,
     borderWidth: 1,
     borderColor: '#F3F0FF',
+  },
+  logoutButton: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  logoutText: {
+    color: '#DC2626',
+    fontSize: 15,
+    fontWeight: '700',
   },
   infoCard: {
     alignItems: 'center',

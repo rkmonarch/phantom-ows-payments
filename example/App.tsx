@@ -24,12 +24,12 @@ export default function App() {
       config={{
         appId: PHANTOM_APP_ID,
         scheme: 'phantom-ows-example',
-        cluster: 'devnet',
-        solanaRpcUrl: process.env.EXPO_PUBLIC_RPC ?? 'https://api.devnet.solana.com',
+        cluster: 'mainnet-beta',
+        solanaRpcUrl: process.env.EXPO_PUBLIC_RPC ?? 'https://api.mainnet-beta.solana.com',
         defaultPolicy: {
           dailyLimitUsd: 50,
           perTransactionLimitUsd: 10,
-          allowedChains: ['solana:devnet'],
+          allowedChains: ['solana:mainnet'],
           requireBiometrics: true,
           autoApproveBelow: 0.10,
         },

@@ -9,6 +9,8 @@
   "source": "src/index.ts",
   "exports": {
     ".": {
+      "react-native": "./src/index.ts",
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.mjs"

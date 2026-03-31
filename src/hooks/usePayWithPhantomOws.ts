@@ -11,8 +11,6 @@ import {
   checkPolicy,
   signSvmPayment,
   buildAndSignSvmTransfer,
-  buildAndSignSvmTransferLocal,
-  getOrCreateDevnetKeypair,
   signEvmPayment,
   parseSettlementResponse,
   computeTodaySpend,
@@ -72,42 +70,86 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
     async (accept: X402PaymentAccept, resourceUrl: string): Promise<X402PaymentPayload> => {
       if (isSvmNetwork(accept.network)) {
         const isDevnet = accept.network.includes('devnet');
-        const rpcUrl = config.solanaRpcUrl ?? 'https://api.mainnet-beta.solana.com';
+        const rpcUrl = config.solanaRpcUrl ?? (isDevnet ? 'https://api.devnet.solana.com' : 'https://api.mainnet-beta.solana.com');
+        const targetNetwork = isDevnet ? 'devnet' : 'mainnet';
 
-        if (isDevnet) {
-          // Phantom's embedded KMS is mainnet-only — it has no devnet USD price feed
-          // so the spending extension always fails on devnet (HTTP 500 from KMS).
-          // signTransaction is also unsupported for embedded wallets per Phantom docs.
-          // Solution: sign locally with a persisted Keypair and broadcast directly.
-          const keypair = await getOrCreateDevnetKeypair();
-          console.log('[ows] devnet local signer:', keypair.publicKey.toBase58());
-          return buildAndSignSvmTransferLocal(accept, keypair, rpcUrl, resourceUrl);
-        }
-
-        console.log('[ows] switchNetwork → mainnet');
-        await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork('mainnet');
+        console.log(`[ows] switchNetwork → ${targetNetwork}`);
+        await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork(targetNetwork);
 
         const signerAddress = (solana as typeof solana & { publicKey?: string | null }).publicKey ?? wallet.solanaAddress;
         if (!signerAddress) throw new Error('Solana signer address not available — wallet not connected');
 
         const hasPartialTx = !!(accept.extra as Record<string, unknown> | undefined)?.['transaction'];
-        let result: X402PaymentPayload;
         if (hasPartialTx) {
-          result = await signSvmPayment(
+          return signSvmPayment(
             accept,
             (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
             resourceUrl,
           );
-        } else {
-          const signAndSend = async (tx: unknown): Promise<{ signature: string }> => {
-            const { signature } = await solana.signAndSendTransaction(
-              tx as Parameters<typeof solana.signAndSendTransaction>[0],
-            );
-            return { signature };
-          };
-          result = await buildAndSignSvmTransfer(accept, signerAddress, signAndSend, rpcUrl, resourceUrl);
         }
-        return result;
+
+        if (isDevnet) {
+          // KMS always attaches simulationConfig to signAndSendTransaction which fails on devnet.
+          // Instead: sign-only via Phantom (no simulation), then broadcast manually via devnet RPC.
+          console.log('[ows] devnet path — signer:', signerAddress);
+          const web3 = await import('@solana/web3.js');
+          console.log('[ows] web3 imported');
+          const connection = new web3.Connection(rpcUrl, 'confirmed');
+          const fromPubkey = new web3.PublicKey(signerAddress);
+          const toPubkey = new web3.PublicKey(accept.payTo);
+          const lamports = parseInt(accept.amount, 10);
+
+          // Auto-airdrop if wallet has no devnet SOL
+          const balance = await connection.getBalance(fromPubkey, 'confirmed');
+          console.log('[ows] devnet balance:', balance, 'lamports needed:', lamports + 10_000);
+          if (balance < lamports + 10_000) {
+            console.log('[ows] airdropping 1 devnet SOL to', signerAddress);
+            const airdropSig = await connection.requestAirdrop(fromPubkey, web3.LAMPORTS_PER_SOL);
+            const latest = await connection.getLatestBlockhash();
+            await connection.confirmTransaction({ signature: airdropSig, ...latest }, 'confirmed');
+            console.log('[ows] airdrop confirmed');
+          }
+
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+          const tx = new web3.Transaction({ recentBlockhash: blockhash, feePayer: fromPubkey }).add(
+            web3.SystemProgram.transfer({ fromPubkey, toPubkey, lamports }),
+          );
+
+          console.log('[ows] calling signTransaction via Phantom...');
+          let signedTx: unknown;
+          try {
+            signedTx = await solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]);
+            console.log('[ows] signTransaction succeeded');
+          } catch (signErr) {
+            console.error('[ows] signTransaction failed:', signErr instanceof Error ? signErr.message : String(signErr));
+            throw signErr;
+          }
+          const rawTx = (signedTx as { serialize: () => Uint8Array }).serialize();
+          const signature = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+          await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+          console.log('[ows] devnet Phantom tx confirmed:', signature.slice(0, 12) + '...');
+
+          return {
+            x402Version: 2,
+            scheme: accept.scheme,
+            network: accept.network,
+            payload: signature,
+            resource: {
+              url: resourceUrl,
+              amount: accept.amount,
+              asset: accept.asset,
+              payTo: accept.payTo,
+            },
+          };
+        }
+
+        const signAndSend = async (tx: unknown): Promise<{ signature: string }> => {
+          const { signature } = await solana.signAndSendTransaction(
+            tx as Parameters<typeof solana.signAndSendTransaction>[0],
+          );
+          return { signature };
+        };
+        return buildAndSignSvmTransfer(accept, signerAddress, signAndSend, rpcUrl, resourceUrl);
       } else {
         return signEvmPayment(accept, resourceUrl);
       }

@@ -141,7 +141,7 @@ export function BlogScreen() {
       <Text style={styles.title}>Blog</Text>
       <Text style={[styles.subtitle, { fontSize: 12, color: '#7C3AED', fontWeight: '600' }]}>@rkmonarch</Text>
       <Text style={styles.subtitle}>
-        Full articles are gated behind x402 · 0.0001 SOL on devnet
+        Full articles are gated behind x402 · 0.0001 SOL on mainnet
       </Text>
 
       {loading && (
