@@ -75,20 +75,22 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
         const rpcUrl = config.solanaRpcUrl ?? 'https://api.devnet.solana.com';
 
         if (isDevnet) {
-          // Phantom's cloud KMS has a "Solana USD spend extension" that simulates
-          // every transaction before signing. On devnet it always fails because devnet
-          // SOL has no USD price feed. We bypass the KMS entirely by signing locally
-          // with a persisted keypair and broadcasting directly to the devnet RPC.
+          // Phantom's embedded KMS is mainnet-only — it has no devnet USD price feed
+          // so the spending extension always fails on devnet (HTTP 500 from KMS).
+          // signTransaction is also unsupported for embedded wallets per Phantom docs.
+          // Solution: sign locally with a persisted Keypair and broadcast directly.
           const keypair = await getOrCreateDevnetKeypair();
           console.log('[ows] devnet local signer:', keypair.publicKey.toBase58());
           return buildAndSignSvmTransferLocal(accept, keypair, rpcUrl, resourceUrl);
         }
 
-        // ── Mainnet: use Phantom's MPC KMS ────────────────────────────────────
         console.log('[ows] switchNetwork → mainnet');
         await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork('mainnet');
 
-        // Bypass the /prepare simulation endpoint (backend sometimes rejects devnet-style tx)
+        // Bypass Phantom's /prepare simulation endpoint via axios interceptor.
+        // For devnet we also use signTransaction (not signAndSendTransaction) so that
+        // the KMS request omits simulationConfig — which prevents the "Solana USD spend
+        // extension" from running its own simulation quorum (fails on devnet, no USD feed).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const phantomClient = (solana as any)?.provider?.client;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,6 +103,7 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (reqConfig: any) => {
               if (typeof reqConfig.url === 'string' && reqConfig.url.endsWith('/prepare')) {
+                console.log('[ows] intercepting /prepare — returning tx unchanged');
                 reqConfig.adapter = () => {
                   const txData = typeof reqConfig.data === 'string'
                     ? JSON.parse(reqConfig.data)

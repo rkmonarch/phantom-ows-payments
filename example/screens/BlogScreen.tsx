@@ -2,7 +2,7 @@
  * BlogScreen — Medium article paywall demo
  *
  * Lists @rkmonarch's articles for free, then gates the full content behind
- * an x402 SOL payment (0.005 SOL on devnet). Payment is handled autonomously
+ * an x402 SOL payment (0.0001 SOL on mainnet). Payment is handled autonomously
  * via Phantom's HSM + OWS policy engine — the user just taps "Read Article".
  *
  * Requires the example server running at SERVER_URL below.
@@ -25,7 +25,7 @@ import { usePayWithPhantomOws, usePhantomOwsWallet } from 'phantom-ows-payments'
 // Update this to your machine's LAN IP when testing on a real device
 // For simulator: localhost works fine
 const SERVER_URL = 'http://localhost:3001';
-const ARTICLE_PRICE_SOL = 0.005;
+const ARTICLE_PRICE_SOL = 0.0001;
 
 interface ArticleSummary {
   id: string;
@@ -140,7 +140,7 @@ export function BlogScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>@rkmonarch's Blog</Text>
       <Text style={styles.subtitle}>
-        Full articles are gated behind x402 · 0.005 SOL on devnet
+        Full articles are gated behind x402 · 0.0001 SOL on mainnet
       </Text>
 
       {loading && (
@@ -204,10 +204,10 @@ export function BlogScreen() {
               {isPaying && payingId === article.id ? (
                 <View style={styles.readButtonRow}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.readButtonText}>Paying 0.005 SOL…</Text>
+                  <Text style={styles.readButtonText}>Paying 0.0001 SOL…</Text>
                 </View>
               ) : (
-                <Text style={styles.readButtonText}>Read · 0.005 SOL</Text>
+                <Text style={styles.readButtonText}>Read · 0.0001 SOL</Text>
               )}
             </TouchableOpacity>
           </View>
