@@ -72,7 +72,7 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
     async (accept: X402PaymentAccept, resourceUrl: string): Promise<X402PaymentPayload> => {
       if (isSvmNetwork(accept.network)) {
         const isDevnet = accept.network.includes('devnet');
-        const rpcUrl = config.solanaRpcUrl ?? 'https://api.devnet.solana.com';
+        const rpcUrl = config.solanaRpcUrl ?? 'https://api.mainnet-beta.solana.com';
 
         if (isDevnet) {
           // Phantom's embedded KMS is mainnet-only — it has no devnet USD price feed

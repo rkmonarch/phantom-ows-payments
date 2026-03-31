@@ -36,7 +36,7 @@ const DEMO_X402_CHALLENGE: X402PaymentRequired = {
   accepts: [
     {
       scheme: "exact",
-      network: "solana:devnet",
+      network: "solana:mainnet",
       amount: "100000", // 0.10 USDC
       asset: "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr",
       payTo: DEMO_RECIPIENT,
@@ -77,26 +77,21 @@ export function PaymentScreen() {
         SystemProgram,
         PublicKey,
         Connection,
-        clusterApiUrl,
       } = await import("@solana/web3.js");
+
+      const rpcUrl = process.env.EXPO_PUBLIC_RPC ?? 'https://api.mainnet-beta.solana.com';
 
       const switchNetwork = (solana as unknown as {
         switchNetwork?: (network: string) => Promise<void>;
       }).switchNetwork;
       if (typeof switchNetwork === "function") {
-        await switchNetwork("devnet");
+        await switchNetwork("mainnet");
       }
 
-      const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+      const connection = new Connection(rpcUrl, "confirmed");
       const signerAddress = (solana as typeof solana & { publicKey?: string | null }).publicKey ?? solanaAddress;
       if (!signerAddress) {
         throw new Error("Solana signer address not available");
-      }
-      if (solanaAddress && solanaAddress !== signerAddress) {
-        console.warn("[pay] signer/account mismatch", {
-          walletAddress: solanaAddress,
-          signerAddress,
-        });
       }
       const fromPubkey = new PublicKey(signerAddress);
       const toPubkey = new PublicKey(DEMO_RECIPIENT);
@@ -104,7 +99,7 @@ export function PaymentScreen() {
       const fromAccount = await connection.getAccountInfo(fromPubkey, "confirmed");
       if (!fromAccount) {
         throw new Error(
-          `Wallet ${signerAddress} does not exist on devnet yet. Fund this exact address first.`,
+          `Wallet ${signerAddress} does not exist on mainnet yet.`,
         );
       }
 
@@ -127,7 +122,7 @@ export function PaymentScreen() {
       const requiredLamports = DEMO_LAMPORTS + fee;
       if (balance < requiredLamports) {
         throw new Error(
-          `Insufficient devnet SOL. Wallet has ${(balance / 1e9).toFixed(6)} SOL and needs at least ${(requiredLamports / 1e9).toFixed(6)} SOL including fees.`,
+          `Insufficient SOL. Wallet has ${(balance / 1e9).toFixed(6)} SOL and needs at least ${(requiredLamports / 1e9).toFixed(6)} SOL including fees.`,
         );
       }
 
@@ -183,15 +178,14 @@ export function PaymentScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Direct SOL Transfer</Text>
         <Text style={styles.hint}>
-          Sends 0.000001 SOL on devnet to the demo address.{"\n"}
-          Requires your wallet to be funded — use{" "}
-          <Text style={styles.mono}>solfaucet.com</Text> if needed.
+          Sends 0.000001 SOL on mainnet to the demo address.{"\n"}
+          Requires your wallet to have mainnet SOL.
         </Text>
         <InfoRow
           label="To"
           value={`${DEMO_RECIPIENT.slice(0, 8)}...${DEMO_RECIPIENT.slice(-6)}`}
         />
-        <InfoRow label="Amount" value="0.000001 SOL (devnet)" />
+        <InfoRow label="Amount" value="0.000001 SOL (mainnet)" />
 
         <TouchableOpacity
           style={styles.payButton}

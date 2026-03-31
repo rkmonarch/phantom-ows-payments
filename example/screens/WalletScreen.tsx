@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Clipboard, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ConnectButton, usePhantomOwsWallet, usePolicy } from 'phantom-ows-payments';
 
-const SOLANA_RPC = 'https://api.devnet.solana.com';
+const SOLANA_RPC = process.env.EXPO_PUBLIC_RPC ?? 'https://api.mainnet-beta.solana.com';
 
 export function WalletScreen() {
   const { isConnected, solanaAddress, evmAddress } = usePhantomOwsWallet();
@@ -62,7 +62,7 @@ export function WalletScreen() {
         <>
           {/* Balance */}
           <View style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>Devnet Balance</Text>
+            <Text style={styles.balanceLabel}>Balance</Text>
             {balanceLoading ? (
               <ActivityIndicator color="#A78BFA" />
             ) : (
