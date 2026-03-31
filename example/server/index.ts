@@ -296,7 +296,7 @@ app.listen(PORT, () => {
   console.log(`\n👻 phantom-ows blog server running at http://localhost:${PORT}`);
   console.log(`   Treasury: ${TREASURY_WALLET}`);
   console.log(`   Price:    ${ARTICLE_PRICE_LAMPORTS / 1e9} SOL per article`);
-  console.log(`   Network:  devnet\n`);
+  console.log(`   Network:  mainnet\n`);
   // Pre-warm the RSS cache
   fetchArticles().catch(console.error);
 });

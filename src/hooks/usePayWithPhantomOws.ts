@@ -87,78 +87,25 @@ export function usePayWithPhantomOws(): UsePayWithPhantomOwsReturn {
         console.log('[ows] switchNetwork → mainnet');
         await (solana as unknown as { switchNetwork: (n: string) => Promise<void> }).switchNetwork('mainnet');
 
-        // Bypass Phantom's /prepare simulation endpoint via axios interceptor.
-        // For devnet we also use signTransaction (not signAndSendTransaction) so that
-        // the KMS request omits simulationConfig — which prevents the "Solana USD spend
-        // extension" from running its own simulation quorum (fails on devnet, no USD feed).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const phantomClient = (solana as any)?.provider?.client;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const axiosInstance = phantomClient?.axiosInstance;
-        let axiosRequestInterceptorId: number | undefined;
-        let axiosResponseInterceptorId: number | undefined;
-
-        if (axiosInstance) {
-          axiosRequestInterceptorId = axiosInstance.interceptors.request.use(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (reqConfig: any) => {
-              if (typeof reqConfig.url === 'string' && reqConfig.url.endsWith('/prepare')) {
-                console.log('[ows] intercepting /prepare — returning tx unchanged');
-                reqConfig.adapter = () => {
-                  const txData = typeof reqConfig.data === 'string'
-                    ? JSON.parse(reqConfig.data)
-                    : reqConfig.data;
-                  return Promise.resolve({
-                    data: { transaction: txData?.transaction ?? '' },
-                    status: 200, statusText: 'OK', headers: {}, config: reqConfig,
-                  });
-                };
-              }
-              return reqConfig;
-            },
-          );
-          axiosResponseInterceptorId = axiosInstance.interceptors.response.use(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (response: any) => response,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (error: any) => {
-              const url = error.config?.url ?? 'unknown';
-              const status = error.response?.status;
-              const body = JSON.stringify(error.response?.data);
-              console.error(`[ows] Phantom API error: ${url} → HTTP ${status}: ${body}`);
-              return Promise.reject(error);
-            },
-          );
-        }
-
         const signerAddress = (solana as typeof solana & { publicKey?: string | null }).publicKey ?? wallet.solanaAddress;
         if (!signerAddress) throw new Error('Solana signer address not available — wallet not connected');
 
         const hasPartialTx = !!(accept.extra as Record<string, unknown> | undefined)?.['transaction'];
         let result: X402PaymentPayload;
-        try {
-          if (hasPartialTx) {
-            result = await signSvmPayment(
-              accept,
-              (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
-              resourceUrl,
+        if (hasPartialTx) {
+          result = await signSvmPayment(
+            accept,
+            (tx) => solana.signTransaction(tx as Parameters<typeof solana.signTransaction>[0]),
+            resourceUrl,
+          );
+        } else {
+          const signAndSend = async (tx: unknown): Promise<{ signature: string }> => {
+            const { signature } = await solana.signAndSendTransaction(
+              tx as Parameters<typeof solana.signAndSendTransaction>[0],
             );
-          } else {
-            const signAndSend = async (tx: unknown): Promise<{ signature: string }> => {
-              const { signature } = await solana.signAndSendTransaction(
-                tx as Parameters<typeof solana.signAndSendTransaction>[0],
-              );
-              return { signature };
-            };
-            result = await buildAndSignSvmTransfer(accept, signerAddress, signAndSend, rpcUrl, resourceUrl);
-          }
-        } finally {
-          if (axiosInstance && axiosRequestInterceptorId !== undefined) {
-            axiosInstance.interceptors.request.eject(axiosRequestInterceptorId);
-          }
-          if (axiosInstance && axiosResponseInterceptorId !== undefined) {
-            axiosInstance.interceptors.response.eject(axiosResponseInterceptorId);
-          }
+            return { signature };
+          };
+          result = await buildAndSignSvmTransfer(accept, signerAddress, signAndSend, rpcUrl, resourceUrl);
         }
         return result;
       } else {
