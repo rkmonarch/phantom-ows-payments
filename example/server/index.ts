@@ -22,7 +22,7 @@ const PORT = process.env.PORT ?? 3001;
 // Treasury wallet — receives payments on mainnet
 const TREASURY_WALLET = process.env.TREASURY_WALLET ?? '3YKGasCtfeMHNR5CrFB4Y5sL6b5ukvzSoTpcUGpFJs36';
 const ARTICLE_PRICE_LAMPORTS = 100_000; // 0.0001 SOL
-const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const RSS_URL = 'https://medium.com/feed/@rkmonarch';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -127,7 +127,7 @@ function buildChallenge(articleId: string, resourcePath: string): object {
     accepts: [
       {
         scheme: 'exact',
-        network: 'solana:mainnet',
+        network: 'solana:devnet',
         amount: String(ARTICLE_PRICE_LAMPORTS),
         asset: 'SOL',
         payTo: TREASURY_WALLET,
@@ -296,7 +296,7 @@ app.listen(PORT, () => {
   console.log(`\n👻 phantom-ows blog server running at http://localhost:${PORT}`);
   console.log(`   Treasury: ${TREASURY_WALLET}`);
   console.log(`   Price:    ${ARTICLE_PRICE_LAMPORTS / 1e9} SOL per article`);
-  console.log(`   Network:  mainnet\n`);
+  console.log(`   Network:  devnet\n`);
   // Pre-warm the RSS cache
   fetchArticles().catch(console.error);
 });
