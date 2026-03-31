@@ -138,7 +138,8 @@ export function BlogScreen() {
   // ── Article list view ─────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>@rkmonarch's Blog</Text>
+      <Text style={styles.title}>Blog</Text>
+      <Text style={[styles.subtitle, { fontSize: 12, color: '#7C3AED', fontWeight: '600' }]}>@rkmonarch</Text>
       <Text style={styles.subtitle}>
         Full articles are gated behind x402 · 0.0001 SOL on mainnet
       </Text>
@@ -252,43 +253,52 @@ function formatDate(raw: string): string {
 
 const styles = StyleSheet.create({
   container: { gap: 16 },
-  title: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
-  subtitle: { color: '#888', fontSize: 13, lineHeight: 18 },
+  title: { color: '#1E1B4B', fontSize: 26, fontWeight: '700', letterSpacing: -0.5 },
+  subtitle: { color: '#7C6FAF', fontSize: 13, lineHeight: 18 },
 
   center: { alignItems: 'center', gap: 12, paddingVertical: 32 },
-  loadingText: { color: '#666', fontSize: 14 },
-  emptyText: { color: '#555', fontSize: 15, textAlign: 'center' },
+  loadingText: { color: '#9CA3AF', fontSize: 14 },
+  emptyText: { color: '#9CA3AF', fontSize: 15, textAlign: 'center' },
 
   errorBox: {
-    backgroundColor: '#EF444411',
+    backgroundColor: '#FEF2F2',
     borderRadius: 12,
     padding: 16,
     gap: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
-  errorText: { color: '#EF4444', fontSize: 14, fontWeight: '600' },
-  errorHint: { color: '#EF4444', fontSize: 12, opacity: 0.7, fontFamily: 'monospace' },
+  errorText: { color: '#DC2626', fontSize: 14, fontWeight: '600' },
+  errorHint: { color: '#DC2626', fontSize: 12, opacity: 0.7, fontFamily: 'monospace' },
 
   card: {
-    backgroundColor: '#1A1A2E',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#1E1B4B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F3F0FF',
   },
   thumbnail: {
     width: '100%',
     height: 160,
   },
   cardBody: { padding: 16, gap: 8 },
-  cardTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', lineHeight: 22 },
-  cardMeta: { color: '#555', fontSize: 12 },
+  cardTitle: { color: '#1E1B4B', fontSize: 16, fontWeight: '700', lineHeight: 22 },
+  cardMeta: { color: '#9CA3AF', fontSize: 12 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tag: {
-    backgroundColor: '#7C3AED33',
+    backgroundColor: '#EDE9FE',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  tagText: { color: '#A78BFA', fontSize: 11, fontWeight: '600' },
-  summary: { color: '#888', fontSize: 13, lineHeight: 19 },
+  tagText: { color: '#7C3AED', fontSize: 11, fontWeight: '600' },
+  summary: { color: '#6B7280', fontSize: 13, lineHeight: 19 },
 
   readButton: {
     backgroundColor: '#7C3AED',
@@ -297,7 +307,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
-  readButtonBusy: { backgroundColor: '#4C1D95' },
+  readButtonBusy: { backgroundColor: '#6D28D9' },
   readButtonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   readButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 
@@ -305,8 +315,8 @@ const styles = StyleSheet.create({
   readerContainer: { gap: 16 },
   backButton: { alignSelf: 'flex-start' },
   backButtonText: { color: '#7C3AED', fontSize: 15, fontWeight: '600' },
-  readerTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '700', lineHeight: 28 },
-  readerMeta: { color: '#555', fontSize: 13 },
+  readerTitle: { color: '#1E1B4B', fontSize: 20, fontWeight: '700', lineHeight: 28 },
+  readerMeta: { color: '#9CA3AF', fontSize: 13 },
   readerThumbnail: { width: '100%', height: 200, borderRadius: 12 },
-  readerBody: { color: '#CCCCCC', fontSize: 15, lineHeight: 24 },
+  readerBody: { color: '#374151', fontSize: 15, lineHeight: 26 },
 });
